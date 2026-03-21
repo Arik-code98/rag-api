@@ -1,0 +1,5 @@
+fastapi[standard]
+chromadb 
+sentence-transformers
+groq
+python-dotenv
