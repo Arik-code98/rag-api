@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi import HTTPException
 import uuid
+from fastapi import UploadFile, File
 
 load_dotenv()
 api_key=os.getenv("GROQ_API_KEY")
@@ -14,9 +15,6 @@ client=Groq(api_key=api_key)
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
 chroma_client=chromadb.Client()
-
-class DocumentInput(BaseModel):
-    text: str
 
 class QuestionInput(BaseModel):
     collection_id: str
@@ -29,9 +27,10 @@ def root():
     return{'Message':"api is running"}
 
 @app.post("/upload")
-def file(document:DocumentInput):
-    document=document.text
-    chunks=document.split("\n\n")
+async def upload(document: UploadFile = File(...)):
+    contents = await document.read()
+    text = contents.decode("utf-8")
+    chunks=text.split("\n\n")
     c_id=uuid.uuid4().hex
 
     embeddings=model.encode(chunks)
