@@ -9,7 +9,10 @@ Each uploaded document gets its own isolated ChromaDB collection, identified by 
 ## How It Works
 
 ```
-POST /upload (raw text)
+POST /upload (.txt file)
+      |
+      v
+  Read & Decode file contents (UTF-8)
       |
       v
   Text Chunking  (split on \n\n)
@@ -134,12 +137,12 @@ Upload a plain text document. The text is chunked, embedded, and stored in an is
 ### POST /ask
 Ask a question against a previously uploaded document. The system retrieves the 2 most relevant chunks and generates a grounded answer.
 
-**Request Body**
-```json
-{
-  "collection_id": "a3f2c91e4b6d4e8f9c1d2a3b4c5d6e7f",
-  "question": "How is AI used in healthcare?"
-}
+**Request** — `multipart/form-data`
+```
+
+| Field    | Type | Description                     |
+|----------|------|---------------------------------|
+| document | file | A `.txt` file encoded in UTF-8  |
 ```
 
 **Response**
@@ -163,8 +166,23 @@ Ask a question against a previously uploaded document. The system retrieves the 
 **Step 1 — Upload a document**
 ```bash
 curl -X POST http://127.0.0.1:8000/upload \
-  -H "Content-Type: application/json" \
-  -d '{"text": "AI is transforming healthcare.\n\nIt helps doctors detect diseases early.\n\nML models analyze medical images."}'
+  -F "document=@my_document.txt"
+```
+
+---
+
+**3. Add one bullet under Key Concepts Explored:**
+```
+- Async file handling in FastAPI using `UploadFile` and `await`
+- `multipart/form-data` file uploads vs JSON body requests
+```
+
+---
+
+**4. Add one bullet under Limitations:**
+```
+- **UTF-8 only**: The file is decoded assuming UTF-8 encoding. Adding encoding detection (e.g. `chardet`) would make this more robust.
+- **No file validation**: There is no check on file type or size. Adding MIME type validation and a size limit is recommended before deploying.
 ```
 
 **Step 2 — Use the returned collection_id to ask a question**
