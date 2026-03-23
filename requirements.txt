@@ -3,3 +3,7 @@ chromadb
 sentence-transformers
 groq
 python-dotenv
+python-jose[cryptography] 
+bcrypt==4.0.1
+passlib[bcrypt]
+sqlalchemy

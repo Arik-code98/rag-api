@@ -1,15 +1,20 @@
 # RAG API — Retrieval-Augmented Generation with FastAPI
 
-A RESTful API that brings RAG (Retrieval-Augmented Generation) capabilities to any text document. Upload a document via the API, then ask questions against it — the system retrieves the most relevant passages using semantic search and generates a grounded answer using LLaMA 3.3 70B via the Groq API.
+A RESTful API that brings RAG (Retrieval-Augmented Generation) capabilities to any text document. Upload a `.txt` file via the API, then ask questions against it — the system retrieves the most relevant passages using semantic search and generates a grounded answer using LLaMA 3.3 70B via the Groq API.
 
-Each uploaded document gets its own isolated ChromaDB collection, identified by a unique collection ID, allowing multiple independent documents to coexist simultaneously.
+Each uploaded document gets its own isolated ChromaDB collection, identified by a unique collection ID, allowing multiple independent documents to coexist simultaneously. All endpoints are protected with JWT-based authentication.
 
 ---
 
 ## How It Works
 
 ```
-POST /upload (.txt file)
+POST /register + POST /login
+      |
+      returns JWT token
+      |
+      v
+POST /upload (.txt file + token)
       |
       v
   Read & Decode file contents (UTF-8)
@@ -26,7 +31,7 @@ ChromaDB Collection  (keyed by UUID)
       returns collection_id
       |
       v
-POST /ask (collection_id + question)
+POST /ask (collection_id + question + token)
       |
       v
 Question Embedding  -->  Semantic Search  -->  Top-2 Chunks
@@ -52,6 +57,10 @@ Question Embedding  -->  Semantic Search  -->  Top-2 Chunks
 - **LLaMA 3.3 70B Versatile** - The underlying large language model
 - **Pydantic** - Request body validation
 - **python-dotenv** - Secure API key management
+- **SQLAlchemy** - ORM for user database management
+- **JWT (JSON Web Tokens)** - Token-based authentication via `create_access_token`
+- **Passlib / bcrypt** - Password hashing and verification
+- **FastAPI Security** - OAuth2 password flow (`OAuth2PasswordBearer`)
 
 ---
 
@@ -60,6 +69,10 @@ Question Embedding  -->  Semantic Search  -->  Top-2 Chunks
 ```
 project/
 ├── main.py          # Main application file
+├── auth.py          # JWT token creation and verification
+├── database.py      # SQLAlchemy setup, User model, DB session
+├── users.py         # Password hashing and verification helpers
+├── users.db         # SQLite database (auto-created on first run)
 ├── .env             # Environment variables (not committed)
 └── requirements.txt # Project dependencies
 ```
@@ -115,15 +128,63 @@ Health check to confirm the API is running.
 
 ---
 
-### POST /upload
-Upload a plain text document. The text is chunked, embedded, and stored in an isolated ChromaDB collection. Returns a `collection_id` to be used for querying.
+### POST /register
+Register a new user. Hashes the password and stores credentials in the SQLite database.
 
 **Request Body**
 ```json
 {
-  "text": "Artificial intelligence is transforming healthcare...\n\nMachine learning models can detect..."
+  "username": "john",
+  "password": "secret123"
 }
 ```
+
+**Response**
+```json
+{
+  "Message": "Registered successfully"
+}
+```
+
+---
+
+### POST /login
+Authenticate and receive a JWT access token.
+
+**Request Body** — `form-data` (OAuth2 standard)
+
+| Field    | Type   |
+|----------|--------|
+| username | string |
+| password | string |
+
+**Response**
+```json
+{
+  "access_token": "<jwt_token>",
+  "token_type": "bearer"
+}
+```
+
+**Error (401)**
+```json
+{
+  "detail": "Invalid credentials"
+}
+```
+
+---
+
+### POST /upload
+Upload a `.txt` file. The contents are read, chunked, embedded, and stored in an isolated ChromaDB collection. Returns a `collection_id` for querying.
+
+**Auth**: Requires a valid Bearer token in the `Authorization` header.
+
+**Request** — `multipart/form-data`
+
+| Field    | Type | Description                    |
+|----------|------|--------------------------------|
+| document | file | A `.txt` file encoded in UTF-8 |
 
 **Response**
 ```json
@@ -137,12 +198,14 @@ Upload a plain text document. The text is chunked, embedded, and stored in an is
 ### POST /ask
 Ask a question against a previously uploaded document. The system retrieves the 2 most relevant chunks and generates a grounded answer.
 
-**Request** — `multipart/form-data`
-```
+**Auth**: Requires a valid Bearer token in the `Authorization` header.
 
-| Field    | Type | Description                     |
-|----------|------|---------------------------------|
-| document | file | A `.txt` file encoded in UTF-8  |
+**Request Body**
+```json
+{
+  "collection_id": "a3f2c91e4b6d4e8f9c1d2a3b4c5d6e7f",
+  "question": "How is AI used in healthcare?"
+}
 ```
 
 **Response**
@@ -152,7 +215,7 @@ Ask a question against a previously uploaded document. The system retrieves the 
 }
 ```
 
-**Error (404) — collection not found**
+**Error (404)**
 ```json
 {
   "detail": "doc not found"
@@ -163,40 +226,49 @@ Ask a question against a previously uploaded document. The system retrieves the 
 
 ## Example Workflow
 
-**Step 1 — Upload a document**
+**Step 1 — Register**
+```bash
+curl -X POST http://127.0.0.1:8000/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "john", "password": "secret123"}'
+```
+
+**Step 2 — Login and get token**
+```bash
+curl -X POST http://127.0.0.1:8000/login \
+  -F "username=john" \
+  -F "password=secret123"
+```
+
+**Step 3 — Upload a `.txt` file**
 ```bash
 curl -X POST http://127.0.0.1:8000/upload \
+  -H "Authorization: Bearer <your_token>" \
   -F "document=@my_document.txt"
 ```
 
----
-
-**3. Add one bullet under Key Concepts Explored:**
-```
-- Async file handling in FastAPI using `UploadFile` and `await`
-- `multipart/form-data` file uploads vs JSON body requests
-```
-
----
-
-**4. Add one bullet under Limitations:**
-```
-- **UTF-8 only**: The file is decoded assuming UTF-8 encoding. Adding encoding detection (e.g. `chardet`) would make this more robust.
-- **No file validation**: There is no check on file type or size. Adding MIME type validation and a size limit is recommended before deploying.
-```
-
-**Step 2 — Use the returned collection_id to ask a question**
+**Step 4 — Ask a question**
 ```bash
 curl -X POST http://127.0.0.1:8000/ask \
+  -H "Authorization: Bearer <your_token>" \
   -H "Content-Type: application/json" \
-  -d '{"collection_id": "<your_collection_id>", "question": "How does AI help doctors?"}'
+  -d '{"collection_id": "<your_collection_id>", "question": "What is this document about?"}'
 ```
+
+You can also test all endpoints interactively via Swagger UI at `http://127.0.0.1:8000/docs`.
 
 ---
 
 ## Key Concepts Explored
 
 - REST API design with FastAPI and Pydantic
+- JWT-based authentication with token creation and verification
+- OAuth2 password flow using FastAPI Security
+- Password hashing with bcrypt
+- Protecting routes using FastAPI's `Depends` injection
+- User registration and login with SQLAlchemy and SQLite
+- Async file handling in FastAPI using `UploadFile` and `await`
+- `multipart/form-data` file uploads
 - Dynamic document ingestion and chunking via API
 - Per-document vector collection management with ChromaDB
 - Semantic search using sentence embeddings
@@ -209,7 +281,10 @@ curl -X POST http://127.0.0.1:8000/ask \
 ## Limitations and Improvements
 
 - **In-memory storage**: ChromaDB runs in memory — all collections are lost on server restart. For persistence, use a file-based or hosted ChromaDB instance.
-- **Plain text only**: The `/upload` endpoint currently accepts raw text. Extending it to accept PDF or DOCX uploads would make it more practical.
-- **Fixed retrieval count**: The top-2 chunks are always retrieved. Making `n_results` a configurable parameter would allow better tuning per document size.
-- **No authentication**: Endpoints are currently public. For production, add API key or JWT-based auth to protect both upload and query routes.
+- **SQLite only**: User data is stored in a local SQLite file. For production, migrate to PostgreSQL or another production-grade database.
+- **No token expiry handling on client**: Tokens expire server-side but the client receives no explicit warning — adding refresh token support would improve UX.
+- **UTF-8 only**: The uploaded file is decoded assuming UTF-8 encoding. Adding encoding detection (e.g. `chardet`) would make this more robust.
+- **No file validation**: There is no check on file type or size before processing. Adding MIME type validation and a size limit is recommended before deploying.
+- **Plain text only**: Only `.txt` files are supported. Extending to PDF or DOCX would significantly broaden usability.
+- **Fixed retrieval count**: The top-2 chunks are always retrieved. Making `n_results` configurable would allow better tuning per document size.
 - **Basic chunking**: Splitting on `\n\n` works well for structured text but may miss context at chunk boundaries. A sliding window or token-based chunker would improve retrieval quality.
