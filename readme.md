@@ -1,8 +1,10 @@
 # RAG API — Retrieval-Augmented Generation with FastAPI
 
-A RESTful API that brings RAG (Retrieval-Augmented Generation) capabilities to any text document. Upload a `.txt` file via the API, then ask questions against it — the system retrieves the most relevant passages using semantic search and generates a grounded answer using LLaMA 3.3 70B via the Groq API.
+A RESTful API that enables Retrieval-Augmented Generation (RAG) for text documents. Users can upload a .txt file through the API and query it, where the system performs semantic search to retrieve the most relevant passages and generates accurate, context-aware responses using the LLaMA 3.3 70B model via the Groq API.
 
-Each uploaded document gets its own isolated ChromaDB collection, identified by a unique collection ID, allowing multiple independent documents to coexist simultaneously. All endpoints are protected with JWT-based authentication.
+The API includes a secure authentication system with user registration and login, where credentials are safely stored using hashed passwords. Upon successful login, a JWT access token is issued, which must be included in subsequent requests to access protected endpoints.
+
+Each uploaded document is stored in a dedicated ChromaDB collection, uniquely identified by a collection ID, ensuring complete isolation and support for multiple documents simultaneously. All endpoints are protected using JWT-based authentication, providing secure and controlled access to the system.
 
 ---
 
